@@ -65,7 +65,7 @@ graph TD
 
 ## Connecting the STAB Protocol to a DAO
 
-Once the STAB Protocol is deployed, it should ideally be governed by a DAO. To this end, the DAOpensource package can be used.
+Once the STAB Protocol is deployed, it should ideally be governed by a DAO. To this end, the [DAOpensource package](https://github.com/Stabilis-Labs/DAOpensource) can be used.
 
 Once properly set up, here's a complete diagram showing both modules and their connections:
 
