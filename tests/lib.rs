@@ -19,7 +19,12 @@ pub fn publish_and_setup() -> Result<
     ),
     RuntimeError,
 > {
-    let mut env = TestEnvironment::new();
+    let fake_oracle_address =
+        GlobalAddress::try_from_hex("0dda10a747ab8e3a8ba50b91d48b0f1077062fc6fec8638fd61014dfa270")
+            .unwrap();
+    let mut env = TestEnvironmentBuilder::new()
+        .add_global_references(vec![fake_oracle_address])
+        .build();
     env.disable_auth_module();
     let package =
         PackageFactory::compile_and_publish(this_package!(), &mut env, CompileProfile::Fast)?;
