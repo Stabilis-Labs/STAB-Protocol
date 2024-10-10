@@ -73,6 +73,7 @@ mod proxy {
             add_pair_to_oracle => restrict_to: [OWNER];
             set_reward_per_second => restrict_to: [OWNER];
             put_reward_in_vault => restrict_to: [OWNER];
+            add_claimed_website => restrict_to: [OWNER];
         }
     }
 
@@ -113,6 +114,8 @@ mod proxy {
         reward_vault: Vault,
         /// The reward per second for updating the prices
         reward_per_second: Decimal,
+        /// The dapp definition account
+        dapp_def_account: Global<Account>,
     }
 
     impl Proxy {
@@ -199,6 +202,13 @@ mod proxy {
                 .set_metadata("description", "Bringing stable assets to Radix".to_string());
             dapp_def_account.set_metadata("info_url", Url::of("https://ilikeitstable.com"));
             dapp_def_account.set_metadata(
+                "claimed_websites",
+                vec![
+                    Url::of("https://ilikeitstable.com"),
+                    Url::of("https://beta.ilikeitstable.com"),
+                ],
+            );
+            dapp_def_account.set_metadata(
                 "claimed_entities",
                 vec![
                     GlobalAddress::from(component_address.clone()),
@@ -245,6 +255,7 @@ mod proxy {
                 },
                 reward_vault: Vault::new(reward_address),
                 reward_per_second: dec!("0.02"),
+                dapp_def_account,
             }
             .instantiate()
             .prepare_to_globalize(owner_role)
@@ -355,6 +366,26 @@ mod proxy {
         /// Puts the reward in the reward vault
         pub fn put_reward_in_vault(&mut self, rewards: Bucket) {
             self.reward_vault.put(rewards);
+        }
+
+        /// Adds claimed website to the dapp definition
+        pub fn add_claimed_website(&mut self, website: Url) {
+            match self.dapp_def_account.get_metadata("claimed_websites") {
+                Ok(Some(claimed_websites)) => {
+                    let mut claimed_websites: Vec<Url> = claimed_websites;
+                    claimed_websites.push(website);
+                    self.badge_vault.authorize_with_amount(dec!("0.75"), || {
+                        self.dapp_def_account
+                            .set_metadata("claimed_websites", claimed_websites);
+                    });
+                }
+                Ok(None) | Err(_) => {
+                    self.badge_vault.authorize_with_amount(dec!("0.75"), || {
+                        self.dapp_def_account
+                            .set_metadata("claimed_websites", vec![website]);
+                    });
+                }
+            }
         }
 
         //==================================================================
