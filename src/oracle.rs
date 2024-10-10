@@ -3,67 +3,97 @@
 
 use scrypto::prelude::*;
 
-/*#[derive(ScryptoSbor, PartialEq, Eq, PartialOrd, Ord, Debug, Copy, Clone)]
-pub struct PriceData {
+#[derive(ScryptoSbor, Clone)]
+pub struct PriceMessage {
+    pub market_id: String,
     pub price: Decimal,
-    pub timestamp: i64,
-}*/
+    pub nonce: u64,
+    pub created_at: u64,
+}
 
 #[blueprint]
 mod oracle {
-    // not necessary after religant is available
     enable_method_auth! {
         methods {
             get_prices => PUBLIC;
-            set_xrd_price => restrict_to: [OWNER];
+            set_price => PUBLIC;
+            add_pair => restrict_to: [OWNER];
         }
     }
 
-    // Can be uncommented if the Religant component is available again
-    /*const RELIGANT: Global<Religant> = global_component!(
-        Religant,
-        "component_tdx_2_1cpekt6s65g8025zgstwx4t0tpdsegafse0vtjnfms9k07mcmnr96cm"
-    );
-
     extern_blueprint! {
-        "package_tdx_2_1p50j7463yhtpmq8e9t4vklw8jfuccl0xhe7g2564w8w74nrmrsacxs",
-        Religant {
-            fn get_price(&self) -> Option<PriceData>;
+        "package_tdx_2_1phdppf684w8r4za9pwgafzc0zpmsvt7xlmyx8r7kzq2dlgns9k5war", //stokenet morpher package
+        //package_rdx1p5xvvessslnpnfam9weyzldlxr7q06gen2t3d3waa0x760g7jwxhkd, //mainnet morpher package
+        MorpherOracle {
+            fn check_price_input(&self, message: String, signature: String) -> PriceMessage;
         }
-    }*/
+    }
 
     struct Oracle {
-        prices: Vec<(ResourceAddress, Decimal)>,
-        //religant: Global<Religant>,
+        prices: Vec<(ResourceAddress, Decimal, u64, String)>,
+        oracle_address: ComponentAddress,
     }
 
     impl Oracle {
-        pub fn instantiate_oracle(controller: ResourceAddress) -> Global<Oracle> {
-            let prices: Vec<(ResourceAddress, Decimal)> = vec![(XRD, dec!("0.041"))];
+        pub fn instantiate_oracle(
+            owner_role: OwnerRole,
+            oracle_address: ComponentAddress,
+            dapp_def_address: GlobalAddress,
+        ) -> Global<Oracle> {
+            let prices: Vec<(ResourceAddress, Decimal, u64, String)> = vec![(
+                XRD,
+                dec!("0.015"),
+                Clock::current_time_rounded_to_seconds().seconds_since_unix_epoch as u64,
+                "GATEIO:XRD_USDT".to_string(),
+            )];
 
             Self {
                 prices,
-                //religant: RELIGANT,
+                oracle_address,
             }
             .instantiate()
-            .prepare_to_globalize(OwnerRole::Fixed(rule!(require(
-                controller
-            ))))
+            .prepare_to_globalize(owner_role)
+            .metadata(metadata! {
+                init {
+                    "name" => "STAB Oracle".to_string(), updatable;
+                    "description" => "An oracle used to keep track of collateral prices for STAB".to_string(), updatable;
+                    "info_url" => Url::of("https://ilikeitstable.com"), updatable;
+                    "dapp_definition" => dapp_def_address, updatable;
+                }
+            })
             .globalize()
         }
 
-        pub fn get_prices(&mut self) -> Vec<(ResourceAddress, Decimal)> {
-            /*if let Some(xrd_price_info) = self.religant.get_price() {
-                if xrd_price_info.price != self.prices[0].1 {
-                    self.prices[0].1 = xrd_price_info.price;
-                }
-            }*/
+        pub fn get_prices(&mut self) -> Vec<(ResourceAddress, Decimal, u64, String)> {
             self.prices.clone()
         }
 
         //manual price setting, not necessary after religant is available and part in get_prices can be uncommented
-        pub fn set_xrd_price(&mut self, price: Decimal) {
-            self.prices[0].1 = price;
+        pub fn set_price(&mut self, message: String, signature: String) {
+            let morpher_oracle = Global::<MorpherOracle>::from(self.oracle_address);
+            let price_message = morpher_oracle.check_price_input(message, signature);
+
+            for prices in self.prices.iter_mut() {
+                if prices.3 == price_message.market_id {
+                    assert!(price_message.created_at > prices.2, "Price is too old");
+                    prices.1 = price_message.price;
+                    prices.2 = price_message.created_at;
+                }
+            }
+        }
+
+        pub fn add_pair(
+            &mut self,
+            resource_address: ResourceAddress,
+            market_id: String,
+            starting_price: Decimal,
+        ) {
+            self.prices.push((
+                resource_address,
+                starting_price,
+                Clock::current_time_rounded_to_seconds().seconds_since_unix_epoch as u64,
+                market_id,
+            ));
         }
     }
 }

@@ -184,7 +184,7 @@ mod stabilis_component {
                     "name" => "STAB token", updatable;
                     "symbol" => "STAB", updatable;
                     "info_url" => "https://ilikeitstable.com", updatable;
-                    "icon_url" => Url::of("https://imgur.com/fEwyP5f.png"), updatable;
+                    "icon_url" => Url::of("https://ilikeitstable.com/images/stablogo.png"), updatable;
                 }
             ))
             .mint_roles(mint_roles!(
@@ -221,7 +221,7 @@ mod stabilis_component {
                         "symbol" => "stabLOAN", locked;
                         "description" => "A receipt for your Stabilis loan", locked;
                         "info_url" => "https://ilikeitstable.com", updatable;
-                        "icon_url" => Url::of("https://i.imgur.com/pUFclTo.png"), updatable;
+                        "icon_url" => Url::of("https://ilikeitstable.com/images/receipt.png"), updatable;
                     }
                 ))
                 .non_fungible_data_update_roles(non_fungible_data_update_roles!(
@@ -269,7 +269,7 @@ mod stabilis_component {
                         "symbol" => "stabMARK", locked;
                         "description" => "A receipt received by marking a Stabilis loan", updatable;
                         "info_url" => "https://ilikeitstable.com", updatable;
-                        "icon_url" => Url::of("https://i.imgur.com/Xi6nrsv.png"), updatable;
+                        "icon_url" => Url::of("https://ilikeitstable.com/images/marker-receipt.png"), updatable;
                     }
                 ))
                 .non_fungible_data_update_roles(non_fungible_data_update_roles!(
@@ -320,7 +320,7 @@ mod stabilis_component {
                         "symbol" => "stabLIQ", locked;
                         "description" => "A receipt received for liquidating a Stabilis Loan", updatable;
                         "info_url" => "https://ilikeitstable.com", updatable;
-                        "icon_url" => Url::of("https://i.imgur.com/UnrCzEM.png"), updatable;
+                        "icon_url" => Url::of("https://ilikeitstable.com/images/liquidation.png"), updatable;
                     }
                 ))
                 .non_fungible_data_update_roles(non_fungible_data_update_roles!(

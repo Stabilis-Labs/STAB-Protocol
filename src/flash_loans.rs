@@ -63,6 +63,7 @@ mod flash_loans {
         pub fn instantiate(
             controller_badge: Bucket,
             stabilis: Global<Stabilis>,
+            dapp_def_address: GlobalAddress,
         ) -> Global<FlashLoans> {
             let (address_reservation, component_address) =
                 Runtime::allocate_component_address(FlashLoans::blueprint_id());
@@ -76,7 +77,7 @@ mod flash_loans {
                         "name" => "STAB Flash Loan Receipt", locked;
                         "symbol" => "stabFLASH", locked;
                         "description" => "A receipt for your STAB flash loan", locked;
-                        "info_url" => "https://stabilis.finance", updatable;
+                        "info_url" => "https://ilikeitstable.com", updatable;
                     }
                 ))
                 .non_fungible_data_update_roles(non_fungible_data_update_roles!(
@@ -113,6 +114,14 @@ mod flash_loans {
             .instantiate()
             .prepare_to_globalize(OwnerRole::Fixed(rule!(require(controller_address))))
             .with_address(address_reservation)
+            .metadata(metadata! {
+                init {
+                    "name" => "STAB Flash Loans".to_string(), updatable;
+                    "description" => "A component for flash loans of STAB tokens".to_string(), updatable;
+                    "info_url" => Url::of("https://ilikeitstable.com"), updatable;
+                    "dapp_definition" => dapp_def_address, updatable;
+                }
+            })
             .globalize()
         }
 

@@ -39,10 +39,11 @@ mod stabilis_liquidity_pool {
         /// - Instantiates the TwoResourcePool component
         /// - Instantiates the StabilisPool component
         pub fn new(
-            owner_role: OwnerRole, //proxy owner badge
+            owner_role: OwnerRole,
             resource_address1: ResourceAddress,
             resource_address2: ResourceAddress,
             fee: Decimal,
+            dapp_def_address: GlobalAddress,
         ) -> Global<StabilisPool> {
             let (address_reservation, component_address) =
                 Runtime::allocate_component_address(StabilisPool::blueprint_id());
@@ -63,6 +64,14 @@ mod stabilis_liquidity_pool {
             .instantiate()
             .prepare_to_globalize(owner_role)
             .with_address(address_reservation)
+            .metadata(metadata! {
+                init {
+                    "name" => "STAB/XRD Liquidity Pool".to_string(), updatable;
+                    "description" => "A liquidity pool for STAB/XRD".to_string(), updatable;
+                    "info_url" => Url::of("https://ilikeitstable.com"), updatable;
+                    "dapp_definition" => dapp_def_address, updatable;
+                }
+            })
             .globalize()
         }
 

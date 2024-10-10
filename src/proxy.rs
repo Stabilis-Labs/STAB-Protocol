@@ -15,6 +15,7 @@
 //! Sometimes, a proof is checked within this component, as they cannot be passed along to other components. The ID for this proof is then passed along, for the other component to check the proofs data.
 
 use crate::flash_loans::flash_loans::*;
+use crate::oracle::oracle::*;
 use crate::shared_structs::*;
 use crate::stabilis_component::stabilis_component::*;
 use crate::stabilis_liquidity_pool::stabilis_liquidity_pool::*;
@@ -69,6 +70,9 @@ mod proxy {
             flash_retrieve_interest => restrict_to: [OWNER];
             set_force_mint_liq_percentage => restrict_to: [OWNER];
             set_number_of_prices_cached => restrict_to: [OWNER];
+            add_pair_to_oracle => restrict_to: [OWNER];
+            set_reward_per_second => restrict_to: [OWNER];
+            put_reward_in_vault => restrict_to: [OWNER];
         }
     }
 
@@ -96,7 +100,7 @@ mod proxy {
         /// The price of the XRD token
         xrd_price: Decimal,
         /// The collaterals accepted by the Stabilis component
-        accepted_collaterals: Vec<ResourceAddress>,
+        accepted_collaterals: HashMap<ResourceAddress, u64>,
         /// The percentage of the collateral to supply when force minting
         percentage_to_supply: Decimal,
         /// The percentage of the collateral to take when force liquidating
@@ -105,6 +109,10 @@ mod proxy {
         parameters: InterestParameters,
         /// Data about STAB's price
         stab_price_data: StabPriceData,
+        /// Reward vault for updating the prices
+        reward_vault: Vault,
+        /// The reward per second for updating the prices
+        reward_per_second: Decimal,
     }
 
     impl Proxy {
@@ -135,11 +143,19 @@ mod proxy {
             stab_bucket: Bucket,
             mut controller_badge: Bucket,
             owner_role: OwnerRole,
+            morpher_oracle_address: ComponentAddress,
             cdp_receipt_address: ResourceAddress,
             cdp_marker_address: ResourceAddress,
-            oracle_address: ComponentAddress,
             stabilis_address: ComponentAddress,
+            reward_address: ResourceAddress,
         ) -> (Global<Proxy>, Bucket, Option<Bucket>) {
+            let (address_reservation, component_address) =
+                Runtime::allocate_component_address(Proxy::blueprint_id());
+
+            let dapp_def_account =
+                Blueprint::<Account>::create_advanced(OwnerRole::Updatable(rule!(allow_all)), None); // will reset owner role after dapp def metadata has been set
+            let dapp_def_address = GlobalAddress::from(dapp_def_account.address());
+
             let stabilis: Global<Stabilis> = Global::from(stabilis_address);
 
             let controller_address: ResourceAddress = controller_badge.resource_address();
@@ -149,6 +165,7 @@ mod proxy {
                 stab_bucket.resource_address(),
                 xrd_bucket.resource_address(),
                 dec!(0.001),
+                dapp_def_address,
             );
 
             let (lp_tokens, optional_return_bucket): (Bucket, Option<Bucket>) =
@@ -157,22 +174,55 @@ mod proxy {
             let internal_price: Decimal =
                 controller_badge.authorize_with_all(|| stabilis.return_internal_price());
 
+            let mut accepted_collaterals: HashMap<ResourceAddress, u64> = HashMap::new();
+            accepted_collaterals.insert(
+                XRD,
+                Clock::current_time_rounded_to_seconds().seconds_since_unix_epoch as u64,
+            );
+
+            let own_oracle_address: ComponentAddress = Oracle::instantiate_oracle(
+                owner_role.clone(),
+                morpher_oracle_address,
+                dapp_def_address,
+            )
+            .address();
+
+            let flash_loans = FlashLoans::instantiate(
+                controller_badge.take(1),
+                Global::from(stabilis_address),
+                dapp_def_address,
+            );
+
+            dapp_def_account.set_metadata("account_type", String::from("dapp definition"));
+            dapp_def_account.set_metadata("name", "STAB Protocol".to_string());
+            dapp_def_account
+                .set_metadata("description", "Bringing stable assets to Radix".to_string());
+            dapp_def_account.set_metadata("info_url", Url::of("https://ilikeitstable.com"));
+            dapp_def_account.set_metadata(
+                "claimed_entities",
+                vec![
+                    GlobalAddress::from(component_address.clone()),
+                    GlobalAddress::from(stabilis_address),
+                    GlobalAddress::from(flash_loans.address()),
+                    GlobalAddress::from(own_oracle_address),
+                    GlobalAddress::from(stab_pool.address()),
+                ],
+            );
+            dapp_def_account.set_owner_role(rule!(require(controller_badge.resource_address())));
+
             let proxy = Self {
-                flash_loans: FlashLoans::instantiate(
-                    controller_badge.take(1),
-                    Global::from(stabilis_address),
-                ),
+                flash_loans,
                 badge_vault: FungibleVault::with_bucket(controller_badge.as_fungible()),
                 stab_pool,
                 stabilis,
-                oracle: Global::from(oracle_address),
+                oracle: Global::from(own_oracle_address),
                 oracle_method_name: "get_prices".to_string(),
                 update_delay: 1,
                 number_of_cached_prices: 50,
                 cdp_receipt_manager: ResourceManager::from_address(cdp_receipt_address),
                 cdp_marker_manager: ResourceManager::from_address(cdp_marker_address),
                 xrd_price: dec!("0.041"),
-                accepted_collaterals: vec![XRD],
+                accepted_collaterals,
                 percentage_to_supply: dec!("1.05"),
                 percentage_to_take: dec!("0.95"),
                 stab_price_data: StabPriceData {
@@ -193,9 +243,20 @@ mod proxy {
                     price_error_offset: dec!(1),
                     max_price_error: dec!(0.5),
                 },
+                reward_vault: Vault::new(reward_address),
+                reward_per_second: dec!("0.02"),
             }
             .instantiate()
             .prepare_to_globalize(owner_role)
+            .with_address(address_reservation)
+            .metadata(metadata! {
+                init {
+                    "name" => "STAB Protocol Proxy".to_string(), updatable;
+                    "description" => "A proxy component for the STAB Protocol".to_string(), updatable;
+                    "info_url" => Url::of("https://ilikeitstable.com"), updatable;
+                    "dapp_definition" => dapp_def_address, updatable;
+                }
+            })
             .globalize();
 
             (proxy, lp_tokens, optional_return_bucket)
@@ -286,6 +347,16 @@ mod proxy {
             receiver.call_raw("receive_badges", scrypto_args!(badge_bucket))
         }
 
+        /// Sets the reward per second for updating the prices
+        pub fn set_reward_per_second(&mut self, reward_per_second: Decimal) {
+            self.reward_per_second = reward_per_second;
+        }
+
+        /// Puts the reward in the reward vault
+        pub fn put_reward_in_vault(&mut self, rewards: Bucket) {
+            self.reward_vault.put(rewards);
+        }
+
         //==================================================================
         //                         HELPER METHODS
         //==================================================================
@@ -301,18 +372,29 @@ mod proxy {
         /// # Logic
         /// - Calls the oracle component to get the latest prices
         /// - Iterates over them and updates the collateral prices in the Stabilis component
-        fn update_collateral_prices(&mut self) {
-            let prices: Vec<(ResourceAddress, Decimal)> =
+        fn update_collateral_prices(&mut self) -> Option<Bucket> {
+            let prices: Vec<(ResourceAddress, Decimal, u64, String)> =
                 self.oracle.call(&self.oracle_method_name, &());
-            for (address, price) in prices {
-                if address == XRD {
-                    self.xrd_price = price;
-                }
-                if self.accepted_collaterals.contains(&address) {
+
+            let mut updated_seconds: u64 = 0;
+
+            for (address, price, timestamp, _pair) in prices {
+                if let Some(stored_timestamp) = self.accepted_collaterals.get_mut(&address) {
+                    if address == XRD {
+                        self.xrd_price = price;
+                    }
                     self.badge_vault.authorize_with_amount(dec!("0.75"), || {
                         self.stabilis.change_collateral_price(address, price)
                     });
+                    updated_seconds += timestamp - stored_timestamp.clone();
+                    *stored_timestamp = timestamp;
                 }
+            }
+            let reward: Decimal = Decimal::from(updated_seconds) * self.reward_per_second;
+            if self.reward_vault.amount() > reward {
+                Some(self.reward_vault.take(reward))
+            } else {
+                None
             }
         }
 
@@ -441,7 +523,10 @@ mod proxy {
                 self.stabilis
                     .add_collateral(address, chosen_mcr, initial_price)
             });
-            self.accepted_collaterals.push(address);
+            self.accepted_collaterals.insert(
+                address,
+                Clock::current_time_rounded_to_seconds().seconds_since_unix_epoch as u64,
+            );
         }
 
         pub fn remove_collateral(
@@ -649,6 +734,22 @@ mod proxy {
         pub fn flash_retrieve_interest(&mut self) -> Bucket {
             self.badge_vault
                 .authorize_with_amount(dec!("0.75"), || self.flash_loans.retrieve_interest())
+        }
+
+        //==================================================================
+        //                      ORACLE COMPONENT
+        //==================================================================
+
+        pub fn add_pair_to_oracle(
+            &mut self,
+            resource_address: ResourceAddress,
+            market_id: String,
+            starting_price: Decimal,
+        ) {
+            self.oracle.call_raw::<()>(
+                "add_pair",
+                scrypto_args!(resource_address, market_id, starting_price),
+            );
         }
     }
 }
