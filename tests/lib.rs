@@ -20,7 +20,7 @@ pub fn publish_and_setup() -> Result<
     RuntimeError,
 > {
     let fake_oracle_address =
-        GlobalAddress::try_from_hex("0dda10a747ab8e3a8ba50b91d48b0f1077062fc6fec8638fd61014dfa270")
+        GlobalAddress::try_from_hex("0d906318c6318c60f716464c6318c6318cf7bfcad6a3152b46318c6318c6")
             .unwrap();
     let mut env = TestEnvironmentBuilder::new()
         .add_global_references(vec![fake_oracle_address])

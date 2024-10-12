@@ -72,7 +72,7 @@ mod proxy {
             set_number_of_prices_cached => restrict_to: [OWNER];
             add_pair_to_oracle => restrict_to: [OWNER];
             set_reward_per_second => restrict_to: [OWNER];
-            put_reward_in_vault => restrict_to: [OWNER];
+            put_reward_in_vault => PUBLIC;
             add_claimed_website => restrict_to: [OWNER];
         }
     }
@@ -202,6 +202,10 @@ mod proxy {
                 .set_metadata("description", "Bringing stable assets to Radix".to_string());
             dapp_def_account.set_metadata("info_url", Url::of("https://ilikeitstable.com"));
             dapp_def_account.set_metadata(
+                "icon_url",
+                Url::of("https://ilikeitstable.com/images/stablogo.png"),
+            );
+            dapp_def_account.set_metadata(
                 "claimed_websites",
                 vec![
                     Url::of("https://ilikeitstable.com"),
@@ -285,9 +289,9 @@ mod proxy {
         /// - Updates the collateral prices
         /// - Checks if the internal price needs to be updated
         /// - Updates the internal price if needed
-        pub fn update(&mut self) {
-            self.update_collateral_prices();
+        pub fn update(&mut self) -> Option<Bucket> {
             self.update_internal_price();
+            self.update_collateral_prices()
         }
 
         /// Receives controller badges
@@ -459,8 +463,8 @@ mod proxy {
                 * self.parameters.price_error_offset
                 - self.stab_price_data.internal_price;
 
-            if price_error > self.parameters.allowed_deviation {
-                price_error = self.parameters.allowed_deviation;
+            if price_error > self.parameters.max_price_error {
+                price_error = self.parameters.max_price_error;
             }
 
             let to_change_id: u64 =

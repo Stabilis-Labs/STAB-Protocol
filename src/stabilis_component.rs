@@ -148,7 +148,7 @@ mod stabilis_component {
                 stop_liquidations: false,
                 stop_openings: false,
                 stop_closings: false,
-                stop_force_mint: false,
+                stop_force_mint: true,
                 stop_force_liquidate: false,
                 force_mint_cr_multiplier: dec!(3),
             };
