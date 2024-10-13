@@ -4,7 +4,7 @@
 use scrypto::prelude::*;
 
 /// Data struct of a loan receipt / CDP receipt, gained when opening a CDP / loan
-#[derive(ScryptoSbor, NonFungibleData)]
+#[derive(ScryptoSbor, NonFungibleData, Clone)]
 pub struct Cdp {
     /// collateral used for this loan / cdp
     pub collateral: ResourceAddress,
@@ -68,7 +68,7 @@ pub struct LiquidationReceipt {
 }
 
 /// Status of a CDP
-#[derive(ScryptoSbor, PartialEq)]
+#[derive(ScryptoSbor, PartialEq, Clone)]
 pub enum CdpStatus {
     Healthy,
     Marked,

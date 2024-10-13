@@ -23,3 +23,4 @@ pub mod shared_structs;
 pub mod stabilis_component;
 pub mod stabilis_liquidity_pool;
 pub mod oracle;
+pub mod events;

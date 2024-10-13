@@ -31,6 +31,7 @@
 use crate::shared_structs::*;
 use scrypto::prelude::*;
 use scrypto_avltree::AvlTree;
+use crate::events::*;
 
 #[blueprint]
 #[types(
@@ -45,6 +46,17 @@ use scrypto_avltree::AvlTree;
     CollateralInfo,
     PoolUnitInfo,
     AvlTree<Decimal, Vec<NonFungibleLocalId>>
+)]
+#[events(
+    EventAddCollateral,
+    EventAddPoolCollateral,
+    EventNewCdp,
+    EventUpdateCdp,
+    EventCloseCdp,
+    EventLiquidateCdp,
+    EventChangeCollateral,
+    EventChangePeg,
+    
 )]
 mod stabilis_component {
     enable_method_auth! {
@@ -529,7 +541,7 @@ mod stabilis_component {
 
             let cdp_receipt: NonFungibleBucket = self
                 .cdp_manager
-                .mint_non_fungible(&NonFungibleLocalId::integer(self.cdp_counter), cdp)
+                .mint_non_fungible(&NonFungibleLocalId::integer(self.cdp_counter), cdp.clone())
                 .as_non_fungible();
 
             self.put_collateral(
@@ -537,6 +549,11 @@ mod stabilis_component {
                 is_pool_unit_collateral,
                 collateral,
             );
+
+            Runtime::emit_event(EventNewCdp {
+                cdp: cdp.clone(),
+                cdp_id: NonFungibleLocalId::integer(self.cdp_counter),
+            });
 
             (stab_tokens, cdp_receipt.into())
         }
@@ -619,6 +636,10 @@ mod stabilis_component {
             self.cdp_manager
                 .update_non_fungible_data(&receipt_id, "collateral_amount", dec!(0));
 
+            Runtime::emit_event(EventCloseCdp {
+                cdp_id: receipt_id,
+            });
+
             (collateral, stab_payment)
         }
 
@@ -684,7 +705,7 @@ mod stabilis_component {
         /// - Update the CDP receipt
         /// - If the loan was marked, update the marker receipt
         pub fn top_up_cdp(&mut self, collateral_id: NonFungibleLocalId, collateral: Bucket) {
-            let receipt_data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
+            let mut receipt_data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
             let new_collateral_amount = receipt_data.collateral_amount + collateral.amount();
 
             assert!(
@@ -758,7 +779,15 @@ mod stabilis_component {
                 );
                 self.marked_cdps.remove(&marker_data.marker_placing);
                 self.marked_cdps_active -= 1;
+                receipt_data.status = CdpStatus::Healthy;
             }
+
+            receipt_data.collateral_stab_ratio = cr;
+            receipt_data.collateral_amount = new_collateral_amount;
+            Runtime::emit_event(EventUpdateCdp {
+                cdp: receipt_data,
+                cdp_id: collateral_id,
+            });
         }
 
         /// Remove collateral from a loan / CDP
@@ -784,7 +813,7 @@ mod stabilis_component {
             collateral_id: NonFungibleLocalId,
             amount: Decimal,
         ) -> Bucket {
-            let receipt_data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
+            let mut receipt_data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
             let new_collateral_amount = receipt_data.collateral_amount - amount;
 
             assert!(
@@ -840,6 +869,13 @@ mod stabilis_component {
                 new_collateral_amount,
             );
 
+            receipt_data.collateral_stab_ratio = cr;
+            receipt_data.collateral_amount = new_collateral_amount;
+            Runtime::emit_event(EventUpdateCdp {
+                cdp: receipt_data,
+                cdp_id: collateral_id,
+            });
+
             removed_collateral
         }
 
@@ -879,7 +915,7 @@ mod stabilis_component {
                 "Invalid STAB payment."
             );
 
-            let receipt_data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
+            let mut receipt_data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
             let new_stab_amount = receipt_data.minted_stab - repayment.amount();
 
             if new_stab_amount < dec!(0) {
@@ -959,7 +995,15 @@ mod stabilis_component {
                 );
                 self.marked_cdps.remove(&marker_data.marker_placing);
                 self.marked_cdps_active -= 1;
+                receipt_data.status = CdpStatus::Healthy;
             }
+
+            receipt_data.minted_stab = new_stab_amount;
+            receipt_data.collateral_stab_ratio = cr;
+            Runtime::emit_event(EventUpdateCdp {
+                cdp: receipt_data,
+                cdp_id: collateral_id,
+            });
 
             (None, None)
         }
@@ -987,7 +1031,7 @@ mod stabilis_component {
             collateral_id: NonFungibleLocalId,
             amount: Decimal,
         ) -> Bucket {
-            let receipt_data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
+            let mut receipt_data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
             let new_stab_amount = receipt_data.minted_stab + amount;
 
             assert!(
@@ -1040,6 +1084,13 @@ mod stabilis_component {
                 new_stab_amount,
             );
 
+            receipt_data.minted_stab = new_stab_amount;
+            receipt_data.collateral_stab_ratio = cr;
+            Runtime::emit_event(EventUpdateCdp {
+                cdp: receipt_data,
+                cdp_id: collateral_id,
+            });
+
             self.stab_manager.mint(amount)
         }
 
@@ -1077,7 +1128,7 @@ mod stabilis_component {
                 .get(&collateral)
                 .unwrap()
                 .liquidation_collateral_ratio;
-            let data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
+            let mut data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
 
             assert!(
                 data.collateral_stab_ratio
@@ -1167,6 +1218,14 @@ mod stabilis_component {
                     CdpStatus::Marked,
                 );
 
+                data.status = CdpStatus::Marked;
+                data.marker_id = self.cdp_marker_counter;
+
+                Runtime::emit_event(EventUpdateCdp {
+                    cdp: data,
+                    cdp_id: collateral_id,
+                });
+
                 self.cdp_marker_manager.mint_non_fungible(
                     &NonFungibleLocalId::integer(self.cdp_marker_counter),
                     marker,
@@ -1233,7 +1292,7 @@ mod stabilis_component {
                 .next()
                 .unwrap();
             let collateral_id: NonFungibleLocalId = collateral_ids[0].clone();
-            let data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
+            let mut data: Cdp = self.cdp_manager.get_non_fungible_data(&collateral_id);
 
             self.remove_cr(
                 data.parent_address,
@@ -1337,6 +1396,15 @@ mod stabilis_component {
                     "collateral_stab_ratio",
                     new_cr,
                 );
+
+                data.collateral_stab_ratio = new_cr;
+                data.collateral_amount = new_collateral_amount;
+                data.minted_stab = new_stab_amount;
+
+                Runtime::emit_event(EventUpdateCdp {
+                    cdp: data,
+                    cdp_id: collateral_id,
+                });
             } else {
                 self.cdp_manager.update_non_fungible_data(
                     &collateral_id,
@@ -1348,6 +1416,10 @@ mod stabilis_component {
                     .get_mut(&data.parent_address)
                     .unwrap()
                     .collateral_amount -= data.collateral_stab_ratio * data.minted_stab;
+
+                Runtime::emit_event(EventLiquidateCdp {
+                    cdp_id: collateral_id,
+                });
             }
 
             (collateral_payment, payment)
@@ -1391,7 +1463,7 @@ mod stabilis_component {
                 "Not allowed to force mint right now."
             );
 
-            let mut data: Option<Cdp> = None;
+            let mut data_option: Option<Cdp> = None;
             let mut collateral_id: NonFungibleLocalId = NonFungibleLocalId::integer(0);
             let mut return_bucket: Option<Bucket> = None;
 
@@ -1403,8 +1475,8 @@ mod stabilis_component {
 
                 'outer_loop: for (_cr, collateral_ids, _next_key) in range {
                     for found_collateral_id in collateral_ids {
-                        data = Some(self.cdp_manager.get_non_fungible_data(&found_collateral_id));
-                        if data.as_ref().unwrap().collateral == payment.resource_address() {
+                        data_option = Some(self.cdp_manager.get_non_fungible_data(&found_collateral_id));
+                        if data_option.as_ref().unwrap().collateral == payment.resource_address() {
                             collateral_id = found_collateral_id.clone();
                             break 'outer_loop;
                         }
@@ -1412,7 +1484,7 @@ mod stabilis_component {
                 }
             }
 
-            let data = data.expect("No suitable mints found");
+            let mut data = data_option.expect("No suitable mints found");
             assert!(
                 data.collateral == payment.resource_address(),
                 "Can only force mint other collaterals right now."
@@ -1503,6 +1575,15 @@ mod stabilis_component {
             );
 
             self.put_collateral(data.collateral, data.is_pool_unit_collateral, payment);
+
+            data.collateral_stab_ratio = new_cr;
+            data.collateral_amount = new_collateral_amount;
+            data.minted_stab = new_minted_stab;
+
+            Runtime::emit_event(EventUpdateCdp {
+                cdp: data,
+                cdp_id: collateral_id,
+            });
 
             (stab_tokens, return_bucket)
         }
@@ -1634,6 +1715,12 @@ mod stabilis_component {
                 .get_mut(&collateral)
                 .unwrap()
                 .liquidation_collateral_ratio = mcr * (self.internal_stab_price / new_price);
+
+            Runtime::emit_event(EventChangeCollateral {
+                address: collateral,
+                new_mcr: None,
+                new_usd_price: Some(new_price),
+            });
         }
 
         /// Add a possible collateral to the protocol
@@ -1664,6 +1751,12 @@ mod stabilis_component {
             };
 
             self.collaterals.insert(address, info);
+
+            Runtime::emit_event(EventAddCollateral {
+                address,
+                mcr: chosen_mcr,
+                usd_price: initial_price,
+            });
         }
 
         /// Add a possible pool collateral to the protocol
@@ -1707,11 +1800,20 @@ mod stabilis_component {
             };
 
             self.pool_units.insert(address, info);
+
+            Runtime::emit_event(EventAddPoolCollateral {
+                address,
+                parent_address,
+            });
         }
 
         /// Changes the internal price of the STAB token
         pub fn change_internal_price(&mut self, new_price: Decimal) {
             self.internal_stab_price = new_price;
+
+            Runtime::emit_event(EventChangePeg {
+                internal_price: new_price,
+            });
         }
 
         ///Emptying the treasury of a collateral, error_fallback exists if a pool unit is also in self.collaterals
@@ -1754,6 +1856,12 @@ mod stabilis_component {
             self.collaterals.get_mut(&address).unwrap().accepted = new_acceptance;
             self.collaterals.get_mut(&address).unwrap().mcr = new_mcr;
             self.collaterals.get_mut(&address).unwrap().max_stab_share = new_max_share;
+
+            Runtime::emit_event(EventChangeCollateral {
+                address,
+                new_mcr: Some(new_mcr),
+                new_usd_price: None,
+            });
         }
 
         /// Edit a pool collateral's parameters
@@ -2112,6 +2220,10 @@ mod stabilis_component {
                 );
             }
 
+            Runtime::emit_event(EventLiquidateCdp {
+                cdp_id: marker_data.marked_id,
+            });
+
             (liquidation_payment, payment, receipt.into())
         }
 
@@ -2133,7 +2245,7 @@ mod stabilis_component {
         /// - Update the marker receipt to used
         /// - Insert the healthy CDP again
         /// - Return the liquidation receipt
-        fn save(&mut self, marker_data: CdpMarker, cdp_data: Cdp, cr: Decimal) -> Bucket {
+        fn save(&mut self, marker_data: CdpMarker, mut cdp_data: Cdp, cr: Decimal) -> Bucket {
             self.collaterals
                 .get_mut(&cdp_data.parent_address)
                 .unwrap()
@@ -2177,6 +2289,13 @@ mod stabilis_component {
             );
 
             self.insert_cr(cdp_data.parent_address, cr, marker_data.marked_id.clone());
+
+            cdp_data.status = CdpStatus::Healthy;
+            cdp_data.collateral_stab_ratio = cr;
+            Runtime::emit_event(EventUpdateCdp {
+                cdp: cdp_data,
+                cdp_id: marker_data.marked_id,
+            });
 
             marker_receipt.into()
         }
