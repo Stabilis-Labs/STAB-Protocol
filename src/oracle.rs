@@ -22,8 +22,8 @@ mod oracle {
     }
 
     extern_blueprint! {
-        //"package_sim1pkgxxxxxxxxxpackgexxxxxxxxx000726633226xxxxxxxxxlk8hc9", //simulator package, uncomment to run tests
-        "package_tdx_2_1phdppf684w8r4za9pwgafzc0zpmsvt7xlmyx8r7kzq2dlgns9k5war", //stokenet morpher package
+        "package_sim1pkgxxxxxxxxxpackgexxxxxxxxx000726633226xxxxxxxxxlk8hc9", //simulator package, uncomment to run tests
+        //"package_tdx_2_1phdppf684w8r4za9pwgafzc0zpmsvt7xlmyx8r7kzq2dlgns9k5war", //stokenet morpher package
         //package_rdx1p5xvvessslnpnfam9weyzldlxr7q06gen2t3d3waa0x760g7jwxhkd, //mainnet morpher package
         MorpherOracle {
             fn check_price_input(&self, message: String, signature: String) -> PriceMessage;

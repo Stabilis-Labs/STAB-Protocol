@@ -44,6 +44,8 @@ pub fn publish_and_setup() -> Result<
 
     assert_eq!(controller_badge.amount(&mut env)?, dec!(10));
 
+    stab_comp.set_stops(false, false, false, false, false, &mut env)?;
+
     Ok((env, stab_comp, a_bucket, controller_badge))
 }
 
