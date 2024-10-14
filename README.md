@@ -106,3 +106,7 @@ graph TD
     class DAO,Staking,Gov,Reent,LBP dao;
 
 ```
+
+## Disclaimer
+
+This package is made for research purposes only. In production use of this package is discouraged. Stabilis Labs is not responsible for or affiliated with any deployments of this package.
