@@ -22,14 +22,15 @@ mod oracle {
     }
 
     extern_blueprint! {
-        "package_sim1pkgxxxxxxxxxpackgexxxxxxxxx000726633226xxxxxxxxxlk8hc9", //simulator package, uncomment to run tests
+        //"package_sim1pkgxxxxxxxxxpackgexxxxxxxxx000726633226xxxxxxxxxlk8hc9", //simulator package, uncomment to run tests
         //"package_tdx_2_1phdppf684w8r4za9pwgafzc0zpmsvt7xlmyx8r7kzq2dlgns9k5war", //stokenet morpher package
-        //package_rdx1p5xvvessslnpnfam9weyzldlxr7q06gen2t3d3waa0x760g7jwxhkd, //mainnet morpher package
+        "package_rdx1p5xvvessslnpnfam9weyzldlxr7q06gen2t3d3waa0x760g7jwxhkd", //mainnet morpher package
         MorpherOracle {
             fn check_price_input(&self, message: String, signature: String) -> PriceMessage;
         }
 
         // oracle address for stokenet: component_tdx_2_1cryq46xl9jxej3v8dr6q0lpnzhs4knlg6x2en6gynahghxztdvdp74
+        // oracle address for mainnet: component_rdx1cp07hrz378zfugcf6h8f9usct4zqx7rdgjhxjwphkzxyv9h7l2q04s
     }
 
     struct Oracle {
